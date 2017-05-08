@@ -9,10 +9,11 @@ Startup sequence:
 
 #include <EEPROM.h> // read/write specific turntable data
 #include <Wire.h>   // I2C communication
+/*
 #include <LSM303.h> // accelerometer library
 https://github.com/pololu/lsm303-arduino
-
-// I/O pins
+*/
+// I/O pins, declaration after connection on driver
 #define OTT1 0 
 #define OTT2 1
 #define nSLP_h 4
@@ -23,8 +24,13 @@ https://github.com/pololu/lsm303-arduino
 #define STP_v 12
 #define DIR_v 13
 
-#define SENSOR 2 // analog input
-#define THRESHOLD_SENSOR 100
+// distance sensors
+#define SENSOR_V 2 // analog input
+#define SENSOR_H 3  
+
+//threshold distance sensors, _H 100 ckecked, _V tbd
+#define THRESHOLD_SENSOR_H 100
+#define THRESHOLD_SENSOR_V 100  //tbd
 
 // memory addresses
 #define EEPROM_ADDR_TRANS_h 0
@@ -40,7 +46,7 @@ bool button_pushed = false;
 int x, y, val = 0;
 float delvar;
 char serialBuffer[128];
-LSM303 accelerometer;
+//LSM303 accelerometer;
 
 int msteps_h, msteps_v;
 float transmission_h, transmission_v;
@@ -142,16 +148,13 @@ void button() {
 // return to vertical equilibrium (offset_v)
 void balance()
 {
+  //Activate vertical motor at first button press
   if (!active_v){
     active_v = true;
     digitalWrite(nSLP_v, HIGH);
-    accelerometer.init();
-    accelerometer.enableDefault(); // enable data stream
+   
   }
-  else accelerometer.read();
-  int steps = (asin((float)accelerometer.a.x / 16384) * 180 / 3.141 + offset_v) * spd_v;
-
-  //if (abs(steps) > 1500) steps = 0; 
+  //tbd 
   
   if (steps < 0) {
     digitalWrite(DIR_v, LOW);
