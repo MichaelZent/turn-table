@@ -203,6 +203,10 @@ void parse() {
     Serial.println("set msteps x: set microSteps of motorcontroller");
     Serial.println("move x: move x degrees");
     Serial.println("trig : trigger remote table");
+    Serial.println("activate: activate motor");
+    Serial.println("deactivate: deactivate motor");
+    Serial.println("sleep: deactivate all motors");
+    Serial.println("status: get current position");
     if (is_2D) {
       Serial.println("-------------------------");
       Serial.println("use suffix '_h' for horizontal and '_v' for vertical control");
@@ -215,9 +219,27 @@ void parse() {
     digitalWrite(nSLP_h, LOW);
     digitalWrite(nSLP_v, LOW);
   }
+  if (strcmp(tok, "activate_h") == 0 || strcmp(tok, "activate") == 0) {
+    active_h = true;
+    digitalWrite(nSLP_h, HIGH);
+  }
+  if (strcmp(tok, "activate_v") == 0) {
+    active_v = true;
+    digitalWrite(nSLP_v, HIGH);
+  }
+  if (strcmp(tok, "deactivate_h") == 0 || strcmp(tok, "deactivate" == 0)  {
+    active_h = false;
+    digitalWrite(nSLP_h, LOW);
+  }
+  if (strcmp(tok, "deactivate_v") == 0) {
+    active_v = false;
+    digitalWrite(nSLP_v, LOW);
+  }
   if (strcmp(tok, "status") == 0) {
     Serial.println(angle_h_is);
+    if(is2D) {
     Serial.println(angle_v_is);
+    }
   }
   if (strcmp(tok, "get") == 0) {
     char* tok2 = strtok(0, " \r");
