@@ -4,6 +4,8 @@
   - Push the button to enable the vertical motor
   - Push the button again to balance the box
   - Turn until the marker aligns with the distance sensor to enable the horizontal motor
+
+  -Vertical: positive Angle turns antenna up
 */
 
 #include <EEPROM.h> // read/write specific turntable data
@@ -12,6 +14,7 @@
 // I/O pins
 #define OTT1 0
 #define OTT2 1
+#define REED 2
 #define nSLP_h 4
 #define STP_h 5
 #define DIR_h 6
@@ -57,6 +60,7 @@ void setup() {
   pinMode(nSLP_v, OUTPUT);
   pinMode(STP_v, OUTPUT);
   pinMode(DIR_v, OUTPUT);
+  pinMode(REED, INPUT_PULLUP);
   digitalWrite(nSLP_h, LOW); // keep motors disabled
   digitalWrite(nSLP_v, LOW);
   digitalWrite(STP_v, LOW); // initial start
@@ -128,6 +132,18 @@ void button()
 }
 
 void loop() {
+
+  if (digitalRead(REED)==1)
+{
+  Serial.println("1");
+  delay(500);
+  }
+if(digitalRead(REED)==0)
+{
+  Serial.println("0");
+  delay(500);
+}
+
   if (button_pushed) {
     button_pushed = false;
     Serial.write("Button pushed");
@@ -138,6 +154,11 @@ void loop() {
   }
 
   //balance();
+
+
+
+
+
 
   if (!active_h && analogRead(SENSOR) < THRESHOLD_SENSOR) {
     active_h = true;
@@ -167,21 +188,56 @@ void balance()
   if (!active_v) {
     active_v = true;
     digitalWrite(nSLP_v, HIGH);
+    Serial.println("Vertical motor activated");
   }
-  //  int steps = (asin((float)accelerometer.a.x / 16384) * 180 / 3.141 + offset_v) * spd_v;
-  int steps = 0;
-  //if (abs(steps) > 1500) steps = 0;
 
-  if (steps < 0) {
-    digitalWrite(DIR_v, LOW);
-    steps = abs(steps);
-    Step(steps, STP_v);
+if (digitalRead(REED) == LOW) {
+
+  digitalWrite(DIR_v, HIGH);
+  delvar = 6000;
+  while(digitalRead(REED) == LOW) {
+
+      
+    digitalWrite(STP_v, HIGH);
+    delayMicroseconds(delvar);
+    digitalWrite(STP_v, LOW);
+    delayMicroseconds(delvar);
   }
-  else {
-    digitalWrite(DIR_v, HIGH);
-    Step(steps, STP_v);
-  }
+
+  digitalWrite(DIR_v, LOW);
+  int steps = 16 * spd_v; //tbd
+  Step(steps, STP_v);
+
+  angle_v_is = 0.0;
+  Serial.println("Vertical equilibrium reached. Equilibrium is Angle_v_is = 0.");  
 }
+else {
+
+    digitalWrite(DIR_v, HIGH);
+  delvar = 6000;
+   Serial.println("Adjusting vertical angle. If antenna is higher than 45 degree push the button!");
+while( digitalRead(REED) == HIGH) {
+
+
+      if(button_pushed){
+        button_pushed = false;
+        return;
+      }
+     digitalWrite(STP_v, HIGH);
+    delayMicroseconds(delvar);
+    digitalWrite(STP_v, LOW);
+    delayMicroseconds(delvar);
+    
+}
+balance();
+      
+}
+  
+
+
+}
+
+
 
 // execute command from user
 void parse() {
@@ -222,22 +278,29 @@ void parse() {
   if (strcmp(tok, "activate_h") == 0 || strcmp(tok, "activate") == 0) {
     active_h = true;
     digitalWrite(nSLP_h, HIGH);
+    Serial.println("horizontal motor activated");
   }
   if (strcmp(tok, "activate_v") == 0) {
     active_v = true;
     digitalWrite(nSLP_v, HIGH);
+    Serial.println("vertical motor activated");
   }
-  if (strcmp(tok, "deactivate_h") == 0 || strcmp(tok, "deactivate" == 0)  {
+  if (strcmp(tok, "deactivate_h") == 0 || strcmp(tok, "deactivate") == 0)  {
     active_h = false;
     digitalWrite(nSLP_h, LOW);
+    Serial.println("horizontal motor deactivated");
   }
   if (strcmp(tok, "deactivate_v") == 0) {
     active_v = false;
     digitalWrite(nSLP_v, LOW);
+    Serial.println("vertical motor deactivated");
+  }
+  if (strcmp(tok, "balance_v") == 0) {
+    balance();
   }
   if (strcmp(tok, "status") == 0) {
     Serial.println(angle_h_is);
-    if(is2D) {
+    if(is_2D) {
     Serial.println(angle_v_is);
     }
   }
@@ -386,6 +449,9 @@ void parse() {
         else digitalWrite(DIR_h, LOW);
         steps = angle * spd_h;
         angle_h_is -= Step(steps, STP_h) / spd_h;
+        if (angle_h_is <0) {
+          angle_h_is += 360;
+        }
       Serial.print("New Angle_h: ");
       Serial.println(angle_h_is);
       }
@@ -394,6 +460,13 @@ void parse() {
         else digitalWrite(DIR_h, HIGH);
         steps = angle * spd_h;
         angle_h_is += Step(steps, STP_h) / spd_h;
+        
+              if (angle_h_target > 360) {
+
+        angle_h_target -=  360;
+        
+      }
+        
         Serial.print("New Angle_h: ");
       Serial.println(angle_h_is);
       }
