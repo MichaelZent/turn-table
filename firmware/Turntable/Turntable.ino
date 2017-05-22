@@ -14,14 +14,14 @@
 // I/O pins
 #define OTT1 0
 #define OTT2 1
-#define REED 2
 #define nSLP_h 4
 #define STP_h 5
 #define DIR_h 6
 #define BUTTON 7
-#define nSLP_v 11
-#define STP_v 12
-#define DIR_v 13
+#define nSLP_v 10
+#define STP_v 11
+#define DIR_v 12
+#define REED 13
 
 #define SENSOR A2 // analog input
 #define THRESHOLD_SENSOR 100
@@ -43,7 +43,7 @@ float delvar;
 
 int msteps_h, msteps_v;
 float transmission_h, transmission_v;
-signed int offset_h, offset_v;  // marker/accelerometer offset
+signed int offset_h, offset_v;  // marker/reed offset
 float spd_h, spd_v;  // steps-per-degree
 int trig_step_width_h, trig_step_width_v; // triggering from other turntable
 float angle_h_is = 0;
@@ -183,7 +183,7 @@ if(digitalRead(REED)==0)
 
 
 // return to vertical equilibrium (offset_v)
-void balance()
+void balance_v()
 {
   if (!active_v) {
     active_v = true;
@@ -208,7 +208,8 @@ if (digitalRead(REED) == LOW) {
   int steps = 16 * spd_v; //tbd
   Step(steps, STP_v);
 
-  angle_v_is = 0.0;
+  angle_v_is = 0;
+  angle_v_target = 0;
   Serial.println("Vertical equilibrium reached. Equilibrium is Angle_v_is = 0.");  
 }
 else {
@@ -229,14 +230,70 @@ while( digitalRead(REED) == HIGH) {
     delayMicroseconds(delvar);
     
 }
-balance();
+balance_v();
       
 }
   
-
+//turn to 
+void balance_h() {
+  
+  if (!active_h) {
+    active_h = true;
+    digitalWrite(nSLP_h, HIGH);
+    Serial.println("Horizontal motor activated");
+  }
+  
+  digitalWrite(DIR_h,HIGH);    
+  delvar = 4000;
+  while(analogRead(SENSOR) > THRESHOLD_SENSOR) {
+    
+    digitalWrite(STP_v, HIGH);
+    delayMicroseconds(delvar);
+    digitalWrite(STP_v, LOW);
+    delayMicroseconds(delvar);
+    
+  }
+  
+  if(analogRead(SENSOR) > THRESHOLD_SENSOR) {
+    return;
+  }
+  else {
+    Step((offset_h * spd_h), STP_h); // go to 0 degrees
+    angle_h_is = 0;
+    angle_h_target = 0;
 
 }
 
+  
+  
+void equilibrium() {
+  
+  angle_v_is = 0;
+  angle_v_target = 0;
+  
+  if(digitalRead(REED) == LOW) {
+    
+    digitalWrite(DIR_v, HIGH);
+    delvar = 6000;
+    int offset_stp_v = 0;
+    while(digitalRead(REED) == LOW {
+      
+      digitalWrite(STP_v, HIGH);
+      delayMicroseconds(delvar);
+      digitalWrite(STP_v, LOW);
+      delayMicroseconds(delvar);
+      offset_stp_v ++;
+    }
+          
+          offset_v = offset_stp_v / spd_v;
+          
+  }
+  else {
+    Serial.Write("Error: In vertical equilibrium reed switch should be closed! Try moving the antenna side down and back to equilibrium again and retry.");
+    
+
+          
+}          
 
 
 // execute command from user
@@ -269,143 +326,172 @@ void parse() {
       Serial.println("eg: 'move_v x' or 'set msteps_h x'");
     }
   }
-  if (strcmp(tok, "sleep") == 0) {
+   else if (strcmp(tok, "sleep") == 0) {
     active_h = active_v = false;
     Serial.write("Motors deacitvated");
     digitalWrite(nSLP_h, LOW);
     digitalWrite(nSLP_v, LOW);
   }
-  if (strcmp(tok, "activate_h") == 0 || strcmp(tok, "activate") == 0) {
+  else if (strcmp(tok, "activate_h") == 0 || strcmp(tok, "activate") == 0) {
     active_h = true;
     digitalWrite(nSLP_h, HIGH);
     Serial.println("horizontal motor activated");
   }
-  if (strcmp(tok, "activate_v") == 0) {
+  else if (strcmp(tok, "activate_v") == 0) {
     active_v = true;
     digitalWrite(nSLP_v, HIGH);
     Serial.println("vertical motor activated");
   }
-  if (strcmp(tok, "deactivate_h") == 0 || strcmp(tok, "deactivate") == 0)  {
+  else if (strcmp(tok, "deactivate_h") == 0 || strcmp(tok, "deactivate") == 0)  {
     active_h = false;
     digitalWrite(nSLP_h, LOW);
     Serial.println("horizontal motor deactivated");
   }
-  if (strcmp(tok, "deactivate_v") == 0) {
+  else if (strcmp(tok, "deactivate_v") == 0) {
     active_v = false;
     digitalWrite(nSLP_v, LOW);
     Serial.println("vertical motor deactivated");
   }
-  if (strcmp(tok, "balance_v") == 0) {
-    balance();
+  else if (strcmp(tok, "balance_v") == 0) {
+    balance_v();
   }
-  if (strcmp(tok, "status") == 0) {
+  else if (strcmp(tok, "balance_h") == 0) {
+    balance_h();
+  }
+  else if (strcmp(tok, "initialize") == 0) {
+    balance_h();
+    balance_v();
+  }
+  else if (strcmp(tok, "equilibrium_v") || strcmp(tok, "equilibrium")) {
+    equilibrium();
+
+  else if (strcmp(tok, "status") == 0) {
     Serial.println(angle_h_is);
     if(is_2D) {
     Serial.println(angle_v_is);
     }
   }
-  if (strcmp(tok, "get") == 0) {
+  else if (strcmp(tok, "get") == 0) {
     char* tok2 = strtok(0, " \r");
     if (tok2 == 0) {
       return;
     }
-    if (strcmp(tok2, "spd") == 0 || strcmp(tok2, "spd_h") == 0) {
+    else if (strcmp(tok2, "spd") == 0 || strcmp(tok2, "spd_h") == 0) {
       Serial.println(spd_h);
     }
-    if (strcmp(tok2, "spd_v") == 0) {
+    else if (strcmp(tok2, "spd_v") == 0) {
       Serial.println(spd_v);
     }
-    if (strcmp(tok2, "trig_width") == 0 || strcmp(tok2, "trig_width_h") == 0) {
+    else if (strcmp(tok2, "trig_width") == 0 || strcmp(tok2, "trig_width_h") == 0) {
       Serial.println(trig_step_width_h);
     }
-    if (strcmp(tok2, "trig_width_v") == 0) {
+    else if (strcmp(tok2, "trig_width_v") == 0) {
       Serial.println(trig_step_width_v);
     }
-    if (strcmp(tok2, "trans") == 0 || strcmp(tok2, "trans_h") == 0) {
+    else if (strcmp(tok2, "trans") == 0 || strcmp(tok2, "trans_h") == 0) {
       Serial.println(transmission_h);
     }
-    if (strcmp(tok2, "trans_v") == 0) {
+    else if (strcmp(tok2, "trans_v") == 0) {
       Serial.println(transmission_v);
     }
-    if (strcmp(tok2, "msteps") == 0 || strcmp(tok2, "msteps_h") == 0) {
+    else if (strcmp(tok2, "msteps") == 0 || strcmp(tok2, "msteps_h") == 0) {
       Serial.println(msteps_h);
     }
-    if (strcmp(tok2, "msteps_v") == 0) {
+    else if (strcmp(tok2, "msteps_v") == 0) {
       Serial.println(msteps_v);
     }
-    if (strcmp(tok2, "offset") == 0 || strcmp(tok2, "offset_h") == 0) {
+    else if (strcmp(tok2, "offset") == 0 || strcmp(tok2, "offset_h") == 0) {
       Serial.println(offset_h);
     }
-    if (strcmp(tok2, "offset_v") == 0) {
+    else if (strcmp(tok2, "offset_v") == 0) {
       Serial.println(offset_v);
     }
+    else {
+      Serial.print("Unknown command: ");
+      Serial.println(tok2);
+      Serial.println("Command 'Help' for help");
+      return;
   }
-  if (strcmp(tok, "set") == 0) {
+  else if (strcmp(tok, "set") == 0) {
     char* tok2 = strtok(0, " \r");
     if (tok2 == 0) {
       return;
     }
-    if (strcmp(tok2, "trans") == 0 || strcmp(tok2, "trans_h") == 0) {
+    else if (strcmp(tok2, "trans") == 0 || strcmp(tok2, "trans_h") == 0) {
       char* tok3 = strtok(0, " \r");
       if (tok3 == 0) {
+        Serial.println("Error: No value");
         return;
       }
       char* next;
       transmission_h = strtod(tok3, &next);
       EEPROM.update(EEPROM_ADDR_TRANS_h, transmission_h * 10);
     }
-    if (strcmp(tok2, "trans_v") == 0) {
+    else if (strcmp(tok2, "trans_v") == 0) {
       char* tok3 = strtok(0, " \r");
       if (tok3 == 0) {
+        Serial.println("Error: No value");
         return;
       }
       char* next;
       transmission_v = strtod(tok3, &next);
       EEPROM.update(EEPROM_ADDR_TRANS_v, transmission_v * 10);
     }
-    if (strcmp(tok2, "msteps") == 0 || strcmp(tok2, "msteps_h") == 0) {
+    else if (strcmp(tok2, "msteps") == 0 || strcmp(tok2, "msteps_h") == 0) {
       char* tok3 = strtok(0, " \r");
       if (tok3 == 0) {
+        Serial.println("Error: No value");
         return;
       }
       char* next;
       msteps_h = strtol(tok3, &next, 10);
       EEPROM.update(EEPROM_ADDR_mSTEPS_h, msteps_h);
     }
-    if (strcmp(tok2, "msteps_v") == 0) {
+    else if (strcmp(tok2, "msteps_v") == 0) {
       char* tok3 = strtok(0, " \r");
       if (tok3 == 0) {
+        Serial.println("Error: No value");
         return;
       }
       char* next;
       msteps_v = strtol(tok3, &next, 10);
       EEPROM.update(EEPROM_ADDR_mSTEPS_v, msteps_v);
     }
-    if (strcmp(tok2, "offset_h") == 0) {
+    else if (strcmp(tok2, "offset_h") == 0) {
       char* tok3 = strtok(0, " \r");
       if (tok3 == 0) {
+        Serial.println("Error: No value");
         return;
       }
       char* next;
       offset_h = strtol(tok3, &next, 10) ;
       EEPROM.update(EEPROM_ADDR_OFFSET_h, offset_h);
     }
-    if (strcmp(tok2, "offset_v") == 0) {
+    else if (strcmp(tok2, "offset_v") == 0) {
       char* tok3 = strtok(0, " \r");
       if (tok3 == 0) {
+        Serial.println("Error: No value");
         return;
       }
       char* next;
       offset_v = strtol(tok3, &next, 10) ;
       EEPROM.update(EEPROM_ADDR_OFFSET_v, offset_v + 128);
     }
+    else {
+      Serial.print("Unknown command: ");
+      Serial.println(tok2);
+      Serial.println("Command 'Help' for help");
+      return;
+    }
+      
     Serial.println("OK");
   }
 
   // limited between 0 and 360°
-  if (strcmp(tok, "move") == 0 || strcmp(tok, "move_h") == 0) {
+  else if (strcmp(tok, "move") == 0 || strcmp(tok, "move_h") == 0) {
     char* tok2 = strtok(0, " \r");
     if (tok2 == 0) {
+      Serial.println("Error: No value");
       return;
     }
     if(!active_h) {
@@ -476,9 +562,10 @@ void parse() {
   
 
   // limited between -46° and +46°
-  if (strcmp(tok, "move_v") == 0) {
+  else if (strcmp(tok, "move_v") == 0) {
     char* tok2 = strtok(0, " \r");
     if (tok2 == 0) {
+      Serial.println("Error: No value");
       return;
     }
     if(!active_v){
@@ -526,6 +613,14 @@ void parse() {
     digitalWrite(OTT2, HIGH);
     Serial.println("OK");
   }
+    
+    else {
+      Serial.print("Unknown command: ");
+      Serial.println(tok);
+      Serial.println("Command 'Help' for help");
+      return;
+      
+    }
 }
 
 // rotate motor
