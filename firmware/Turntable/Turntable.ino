@@ -36,6 +36,7 @@
 // global variables
 bool active_h, active_v, is_2D = false;
 bool button_pushed = false;
+bool dir = true; // true if horizontal, false if vertical
 //int x, y, val = 0;
 
 
@@ -130,6 +131,7 @@ void button()
 }
 
 void loop() {
+  /*
   if (digitalRead(REED) == 1)
   {
     Serial.println("1");
@@ -149,7 +151,7 @@ void loop() {
       digitalWrite(nSLP_v, HIGH);
     }
   }
-
+*/
   //balance();
 
 
@@ -177,8 +179,6 @@ void loop() {
     }
   }
 }
-
-
 
 // return to vertical equilibrium (offset_v)
 void balance_v()
@@ -318,6 +318,79 @@ void equilibrium() {
   }
 }
 
+void move(int angle, bool dir) {
+  int steps = 0;
+  if(dir == true) {
+
+    //limit the target angle between 0° and 360°
+    if (is_2D && (angle_h_target > 360 || angle_h_target < 0)) {
+
+      if (angle_h_target > 360) {
+
+        angle_h_target = angle_h_target - 360;
+
+      }
+
+      if (angle_h_target < 0) {
+
+        angle_h_target = angle_h_target + 360;
+      }
+    }
+
+    Serial.print("Target angle:  ");
+    Serial.println(angle_h_target);
+    Serial.print("Angle:  ");
+    Serial.println(angle);
+    if (angle < 0) {
+      angle = abs(angle);
+      if (is_2D) digitalWrite(DIR_h, HIGH); // horizontal motors are flipped ??
+      else digitalWrite(DIR_h, LOW);
+      steps = angle * spd_h;
+      angle_h_is -= Step(steps, STP_h) / spd_h;
+      if (angle_h_is < 0) {
+        angle_h_is += 360;
+      }
+      Serial.print("New Angle_h: ");
+      Serial.println(angle_h_is);
+    }
+    else {
+      if (is_2D) digitalWrite(DIR_h, LOW);
+      else digitalWrite(DIR_h, HIGH);
+      steps = angle * spd_h;
+      angle_h_is += Step(steps, STP_h) / spd_h;
+
+      if (angle_h_target > 360) {
+
+        angle_h_target -=  360;
+
+      }
+
+      Serial.print("New Angle_h: ");
+      Serial.println(angle_h_is);
+    }
+    Serial.print("Driven Steps_h: ");
+    Serial.println(steps);
+  }
+  else {
+        if (angle < 0) {
+        digitalWrite(DIR_v, LOW);
+        angle = abs(angle);
+        steps = angle * spd_v;
+        angle_v_is -= Step(steps, STP_v) / spd_v;
+        Serial.print("New Angle_v: ");
+        Serial.println(angle_v_is);
+      }
+      else {
+        digitalWrite(DIR_v, HIGH);
+        steps = angle * spd_v;
+        angle_v_is += Step(steps, STP_v) / spd_v;
+        Serial.print("New Angle_v: ");
+        Serial.println(angle_v_is);
+      }
+      Serial.print("Driven Steps_v: ");
+      Serial.println(steps);
+  }
+}
 
 // execute command from user
 void parse() {
@@ -512,6 +585,52 @@ void parse() {
     Serial.println("OK");
   }
 
+  
+  else if (strcmp(tok, "moveto") == 0 || strcmp(tok, "moveto_h") == 0) {
+    char* tok2 = strtok(0, " \r");
+    if (tok2 == 0) {
+      Serial.println("Error: No value");
+      return;
+    }
+    if (!active_h) {
+      Serial.println("Error: Motor is deactivated");
+      return;
+    }
+    char* next;
+    angle_h_target = strtod((const char*)tok2, &next);
+    
+    double angle = angle_h_target - angle_h_is;
+    if(angle > 180) {
+      angle = angle - 360;
+    }
+    
+    dir = true;
+    move(angle, dir);
+  }
+  
+ else if (strcmp(tok, "moveto_v") == 0) {
+ char* tok2 = strtok(0, " \r");
+    if (tok2 == 0) {
+      Serial.println("Error: No value");
+      return;
+    }
+    if (!active_v) {
+      Serial.println("Error: Motor is deactivated");
+      return;
+    }
+    char* next;
+    int steps = 0;
+   angle_v_target = strtod((const char*)tok2, &next);
+       if (angle_v_target > 46 || angle_v_target < -46) {
+      angle_v_target = angle_v_is;
+      Serial.println("Error: Maximum target angle is +/-45 degree");
+      return;
+    }
+   double angle = angle_v_target - angle_v_is;
+   dir = false;
+   move(angle,dir);
+   
+ }
   // limited between 0 and 360°
   else if (strcmp(tok, "move") == 0 || strcmp(tok, "move_h") == 0) {
     char* tok2 = strtok(0, " \r");
@@ -526,63 +645,14 @@ void parse() {
     char* next;
     int steps = 0;
     double angle = strtod((const char*)tok2, &next);
-
     if (angle > 360 || angle < -360) {
       Serial.println("Error: Rotation angle over 360 degree");
       return;
     }
+    dir = true;
     angle_h_target += angle;
-    Serial.println("Target angle: ");
-    Serial.println(angle_h_target);
-    //limit the target angle between 0° and 360°
-    if (is_2D && (angle_h_target > 360 || angle_h_target < 0)) {
-
-      if (angle_h_target > 360) {
-
-        angle_h_target = angle_h_target - 360;
-
-      }
-
-      if (angle_h_target < 0) {
-
-        angle_h_target = angle_h_target + 360;
-      }
-    }
-
-    //angle = angle_h_target - angle_h_is;
-    Serial.println("Target angle: ");
-    Serial.println(angle_h_target);
-    Serial.println("Angle: ");
-    Serial.println(angle);
-    if (angle < 0) {
-      angle = abs(angle);
-      if (is_2D) digitalWrite(DIR_h, HIGH); // horizontal motors are flipped ??
-      else digitalWrite(DIR_h, LOW);
-      steps = angle * spd_h;
-      angle_h_is -= Step(steps, STP_h) / spd_h;
-      if (angle_h_is < 0) {
-        angle_h_is += 360;
-      }
-      Serial.print("New Angle_h: ");
-      Serial.println(angle_h_is);
-    }
-    else {
-      if (is_2D) digitalWrite(DIR_h, LOW);
-      else digitalWrite(DIR_h, HIGH);
-      steps = angle * spd_h;
-      angle_h_is += Step(steps, STP_h) / spd_h;
-
-      if (angle_h_target > 360) {
-
-        angle_h_target -=  360;
-
-      }
-
-      Serial.print("New Angle_h: ");
-      Serial.println(angle_h_is);
-    }
-    Serial.print("Driven Steps_h: ");
-    Serial.println(steps);
+    move(angle, dir);
+    
   }
 
 
@@ -598,40 +668,18 @@ void parse() {
       return;
     }
     char* next;
-    int steps;
     double angle = strtod((const char*)tok2, &next);
-    Serial.println(angle);
     angle_v_target += angle;
-    Serial.print("Target Agngle_v: ");
-    Serial.println(angle_v_target);
-
+    
     if (angle_v_target > 46 || angle_v_target < -46) {
       angle_v_target -= angle;
-      Serial.println("Not OK");
-      Serial.println(angle_v_target);
-      Serial.println(angle);
+      Serial.println("Error: Maximum target angle is +/-45 degree");
+      return;
     }
-    else {
-      angle = angle_v_target - angle_v_is;
-      if (angle < 0) {
-        digitalWrite(DIR_v, LOW);
-        angle = abs(angle);
-        steps = angle * spd_v;
-        angle_v_is -= Step(steps, STP_v) / spd_v;
-        Serial.print("New Angle_v: ");
-        Serial.println(angle_v_is);
-      }
-      else {
-        digitalWrite(DIR_v, HIGH);
-        steps = angle * spd_v;
-        angle_v_is += Step(steps, STP_v) / spd_v;
-        Serial.print("New Angle_v: ");
-        Serial.println(angle_v_is);
-      }
-      Serial.print("Driven Steps_v: ");
-      Serial.println(steps);
-    }
+    dir = false;
+     move(angle,dir);  
   }
+  
   else if (strcmp(tok, "trig") == 0) {
     digitalWrite(OTT2, LOW);
     delay(1); // 1ms
