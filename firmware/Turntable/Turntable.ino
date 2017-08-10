@@ -11,18 +11,21 @@
 #include <Wire.h>   // I2C communication
 
 // I/O pins
+//Other turntable
 #define OTT1 0
 #define OTT2 1
+//horizontal motor
 #define nSLP_h 4
 #define STP_h 5
 #define DIR_h 6
 #define BUTTON 7
+//vertical motor
 #define nSLP_v 10
 #define STP_v 11
 #define DIR_v 12
 #define REED 13
 
-#define SENSOR A2 // analog input
+#define SENSOR A2 // analog input distance sensor
 #define THRESHOLD_SENSOR 100
 
 // memory addresses
@@ -34,19 +37,21 @@
 #define EEPROM_ADDR_OFFSET_v 6
 
 // global variables
-bool active_h, active_v, is_2D = false;
-bool button_pushed = false;
+bool active_h, active_v, is_2D = false; // active_x: true if motor is activated ; is_2D: true if both directions are wanted
+bool button_pushed = false; //set to true after button was pushed, reset to false immediatly
 bool dir = true; // true if horizontal, false if vertical
 //int x, y, val = 0;
 
 
-int msteps_h, msteps_v;
-float transmission_h, transmission_v;
+int msteps_h, msteps_v; //motorsteps, loaded from EEPROM or set by user
+float transmission_h, transmission_v; //transmission, loaded from EEPROM
 signed int offset_h, offset_v;  // marker/reed offset
 float spd_h, spd_v;  // steps-per-degree
-int trig_step_width_h, trig_step_width_v; // triggering from other turntable
+int trig_step_width_h, trig_step_width_v; // triggering from other turntable, tbd
+//current angle
 float angle_h_is = 0;
 float angle_v_is = 0;
+//targeted angle
 float angle_h_target = 0;
 float angle_v_target = 0;
 
@@ -71,11 +76,12 @@ void setup() {
   digitalWrite(OTT2, HIGH);
 
   pinMode(BUTTON, INPUT);
-  attachInterrupt(digitalPinToInterrupt(BUTTON), button, FALLING);
+  attachInterrupt(digitalPinToInterrupt(BUTTON), button, FALLING); //interrupt when button pushed
 
   Serial.begin(9600); // Open Serial connection
   Wire.begin();
-
+  
+  //load from EEPROM
   int trans_tmp = EEPROM.read(EEPROM_ADDR_TRANS_h);
   if (trans_tmp != 0xFF) {
     transmission_h = (float)trans_tmp / 10;
@@ -107,6 +113,7 @@ void setup() {
     offset_v = offset_tmp;
     Serial.println(offset_v);
   }
+  //calculate spd
   spd_h = transmission_h * msteps_h / 1.8;
   trig_step_width_h = 10 * transmission_h;
   spd_v = msteps_v * transmission_v / 1.8;
@@ -119,7 +126,7 @@ void setup() {
 
 }
 
-// ISR: set global variable
+// ISR: set global variable, variable used for intercepts while in movements
 void button()
 {
   unsigned long interrupt_time = millis();
@@ -131,6 +138,7 @@ void button()
 }
 
 void loop() {
+
   /*
   if (digitalRead(REED) == 1)
   {
@@ -142,7 +150,8 @@ void loop() {
     Serial.println("0");
     delay(500);
   }
-
+*/
+  //activate vertical motor by pushing button
   if (button_pushed) {
     button_pushed = false;
     Serial.write("Button pushed");
@@ -151,23 +160,24 @@ void loop() {
       digitalWrite(nSLP_v, HIGH);
     }
   }
-*/
+
   //balance();
 
 
 
 
-
-
+  //activate horizontal motor when marker is moved over distance sensor
   if (!active_h && analogRead(SENSOR) < THRESHOLD_SENSOR) {
     active_h = true;
-    Serial.println("horizontal motor activated");
+    Serial.println(F("horizontal motor activated"));
     digitalWrite(nSLP_h, HIGH); // set controller active
     digitalWrite(DIR_h, HIGH); // move clockwise
     delay(100);
     //Step((offset_h * spd_h), STP_h); // go to 0 degrees
   }
 
+
+  
   if (Serial.available()) {
     parse();
   }
@@ -180,13 +190,13 @@ void loop() {
   }
 }
 
-// return to vertical equilibrium (offset_v)
+// return to vertical equilibrium (offset_v), move up till Reed is LOW then move down slowly until Reed switches from LOW to HIGH (known offfset) then moves this offset to equilibrium
 void balance_v()
 {
   if (!active_v) {
     active_v = true;
     digitalWrite(nSLP_v, HIGH);
-    Serial.println("Vertical motor activated");
+    Serial.println(F("Vertical motor activated"));
   }
 
   if (digitalRead(REED) == LOW) {
@@ -195,49 +205,44 @@ void balance_v()
 int    delvar = 6000;
     while (digitalRead(REED) == LOW) {
 
-
+      
       digitalWrite(STP_v, HIGH);
       delayMicroseconds(delvar);
       digitalWrite(STP_v, LOW);
       delayMicroseconds(delvar);
           if (button_pushed) {
-      Serial.println("Warning: Movement stopped by button. Angles might be incorrect now! Initialize again!");
+      Serial.println(F("Warning: Movement stopped by button. Angles might be incorrect now! Initialize again!"));
       button_pushed = false;
-      break;
+      return;
     }
 
       
     }
 
     digitalWrite(DIR_v, LOW);
-    //int steps = 16 * spd_v; //tbd
     int steps = offset_v* spd_v;
     Step(steps, STP_v);
 
     angle_v_is = 0;
     angle_v_target = 0;
-    Serial.println("Vertical equilibrium reached.  Angle_v_is = 0.00");
+    Serial.println(F("Vertical equilibrium reached.  Angle_v_is = 0.00"));
   }
   else {
 
     digitalWrite(DIR_v, HIGH);
 int    delvar = 6000;
-    Serial.println("Adjusting vertical angle. If antenna is higher than 45 degree push the button!");
+    Serial.println(F("Adjusting vertical angle. If antenna is higher than 45 degree push the button!"));
     while ( digitalRead(REED) == HIGH) {
 
 
-      if (button_pushed) {
-        button_pushed = false;
-        return;
-      }
       digitalWrite(STP_v, HIGH);
       delayMicroseconds(delvar);
       digitalWrite(STP_v, LOW);
       delayMicroseconds(delvar);
           if (button_pushed) {
       button_pushed = false;
-      Serial.println("Warning: Movement stopped by button. Angles might be incorrect now! Initialize again!");
-      break;
+      Serial.println(F("Warning: Movement stopped by button. Angles might be incorrect now! Initialize again!"));
+      return;
     }
 
     }
@@ -246,13 +251,13 @@ int    delvar = 6000;
   }
 }
 
-//turn to
+//turn to wanted position; slowly move clockwise till marker is over distance sensor, then move fast to position; Warning: turns fast and many degrees, look out for cable problems
 void balance_h() {
 
   if (!active_h) {
     active_h = true;
     digitalWrite(nSLP_h, HIGH);
-    Serial.println("Horizontal motor activated");
+    Serial.println(F("Horizontal motor activated"));
   }
 
   digitalWrite(DIR_h, HIGH);
@@ -265,24 +270,25 @@ int  delvar = 4000;
     delayMicroseconds(delvar);
         if (button_pushed) {
       button_pushed = false;
-      Serial.println("Warning: Movement stopped by button. Angles might be incorrect now! Initialize again!");
+      Serial.println(F("Warning: Movement stopped by button. Angles might be incorrect now! Initialize again!"));
       break;
     }
 
   }
 
   if (analogRead(SENSOR) > THRESHOLD_SENSOR) {
+    Serial.println(F("Warning: Marker not in right position, try again!"));
     return;
   }
   else {
     Step((offset_h * spd_h), STP_h); // go to 0 degrees
     angle_h_is = 0;
     angle_h_target = 0;
-  Serial.println("Angle_h_is = 0.00");
+  Serial.println(F("Angle_h_is = 0.00"));
   }
 }
 
-
+//defines new equilibrium; Sets new 0 degree mark. Reed has to be LOW to do it succesfully. Drives down till Reed is high to set new offset. Warning: Box has to be in vertical equiibrium when used! If not, the 0 degree is set wrong and dangerous positions can be reached. 
 void equilibrium() {
 
   angle_v_is = 0;
@@ -300,7 +306,7 @@ void equilibrium() {
       digitalWrite(STP_v, LOW);
       delayMicroseconds(delvar);
           if (button_pushed) {
-      Serial.println("Warning: Movement stopped by button. Angles might be incorrect now! Initialize again!");
+      Serial.println(F("Warning: Movement stopped by button. Angles might be incorrect now! Initialize again!"));
       button_pushed = false;
       break;
     }
@@ -311,15 +317,18 @@ void equilibrium() {
 
   }
   else {
-    Serial.println("Error: In vertical equilibrium reed switch should be closed! Try moving the antenna down and back to equilibrium again and retry.");
+    Serial.println(F("Error: In vertical equilibrium reed switch should be closed! Try moving the antenna down and back to equilibrium again and retry."));
 
 
 
   }
 }
 
-void move(int angle, bool dir) {
+//moves a given angle in given direction
+void move(float angle, bool dir) {
   int steps = 0;
+    //Serial.print(F("Angle:  "));
+    //Serial.println(angle);
   if(dir == true) {
 
     //limit the target angle between 0° and 360°
@@ -337,10 +346,10 @@ void move(int angle, bool dir) {
       }
     }
 
-    Serial.print("Target angle:  ");
-    Serial.println(angle_h_target);
-    Serial.print("Angle:  ");
-    Serial.println(angle);
+    //Serial.print(F("Target angle:  "));
+    //Serial.println(angle_h_target);
+    //Serial.print(F("Angle:  "));
+    //Serial.println(angle);
     if (angle < 0) {
       angle = abs(angle);
       if (is_2D) digitalWrite(DIR_h, HIGH); // horizontal motors are flipped ??
@@ -350,8 +359,8 @@ void move(int angle, bool dir) {
       if (angle_h_is < 0) {
         angle_h_is += 360;
       }
-      Serial.print("New Angle_h: ");
-      Serial.println(angle_h_is);
+      //Serial.print(F("New Angle_h: "));
+      //Serial.println(angle_h_is);
     }
     else {
       if (is_2D) digitalWrite(DIR_h, LOW);
@@ -359,36 +368,42 @@ void move(int angle, bool dir) {
       steps = angle * spd_h;
       angle_h_is += Step(steps, STP_h) / spd_h;
 
-      if (angle_h_target > 360) {
+      if (angle_h_is >= 360) {
 
-        angle_h_target -=  360;
+        angle_h_is -=  360;
 
       }
 
-      Serial.print("New Angle_h: ");
-      Serial.println(angle_h_is);
+      //Serial.print(F("New Angle_h: "));
+      //Serial.println(angle_h_is);
     }
-    Serial.print("Driven Steps_h: ");
-    Serial.println(steps);
+    //Serial.print(F("Driven Steps_h: "));
+    //Serial.println(steps);
   }
   else {
         if (angle < 0) {
         digitalWrite(DIR_v, LOW);
+        //Serial.print(F("Angle:"));
+        //Serial.println(angle);
         angle = abs(angle);
+        //Serial.print(F("Abs_Angle:"));
+        //Serial.println(angle);
         steps = angle * spd_v;
+        //Serial.print(F("Steps:"));
+        //Serial.println(steps);
         angle_v_is -= Step(steps, STP_v) / spd_v;
-        Serial.print("New Angle_v: ");
-        Serial.println(angle_v_is);
+        //Serial.print(F("New Angle_v: "));
+        //Serial.println(angle_v_is);
       }
       else {
         digitalWrite(DIR_v, HIGH);
         steps = angle * spd_v;
         angle_v_is += Step(steps, STP_v) / spd_v;
-        Serial.print("New Angle_v: ");
-        Serial.println(angle_v_is);
+        //Serial.print(F("New Angle_v: "));
+        //Serial.println(angle_v_is);
       }
-      Serial.print("Driven Steps_v: ");
-      Serial.println(steps);
+      //Serial.print(F("Driven Steps_v: "));
+      //Serial.println(steps);
   }
 }
 
@@ -405,48 +420,52 @@ void parse() {
   }
 
   if (strcmp(tok, "help") == 0) {
-    Serial.println("get trig_width : get steps per trigger input");
-    Serial.println("get spd : get steps per degree");
-    Serial.println("get trans : get transmission ratio");
-    Serial.println("set trans x: set transmission ratio");
-    Serial.println("set msteps x: set microSteps of motorcontroller");
-    Serial.println("move x: move x degrees");
-    Serial.println("trig : trigger remote table");
-    Serial.println("activate: activate motor");
-    Serial.println("deactivate: deactivate motor");
-    Serial.println("sleep: deactivate all motors");
-    Serial.println("status: get current position");
+    Serial.println(F("get trig_width : get steps per trigger input"));
+    Serial.println(F("get spd : get steps per degree"));
+    Serial.println(F("get trans : get transmission ratio"));
+    Serial.println(F("set trans x: set transmission ratio"));
+    Serial.println(F("set msteps x: set microSteps of motorcontroller"));
+    Serial.println(F("balance: moves to and sets 0 degree, for _v: moves antenna down and afterwards to 0, make sure the antenna is near to equilibrium and not lower than 30 degree"));
+    Serial.println(F("move x: move x degrees, positive value for _h turns clockwise, positive value for _v turns antenna down"));
+    Serial.println(F("moveto x: move to x degree, first use balance!"));
+    Serial.println(F("equilibrium: sets equilibrium, usually not to use! only if balance_v does not move to equilibrium!"));
+    Serial.println(F("trig : trigger remote table"));
+    Serial.println(F("activate: activate motor"));
+    Serial.println(F("deactivate: deactivate motor"));
+    Serial.println(F("sleep: deactivate all motors"));
+    Serial.println(F("status: get current position"));
+    Serial.println(F("get position: get one current position"));
     if (is_2D) {
-      Serial.println("-------------------------");
-      Serial.println("use suffix '_h' for horizontal and '_v' for vertical control");
-      Serial.println("eg: 'move_v x' or 'set msteps_h x'");
+      Serial.println(F("-------------------------"));
+      Serial.println(F("use suffix '_h' for horizontal and '_v' for vertical control"));
+      Serial.println(F("eg: 'move_v x' or 'set msteps_h x'"));
     }
   }
   else if (strcmp(tok, "sleep") == 0) {
     active_h = active_v = false;
-    Serial.write("Motors deacitvated");
+    Serial.println(F("Motors deacitvated"));
     digitalWrite(nSLP_h, LOW);
     digitalWrite(nSLP_v, LOW);
   }
   else if (strcmp(tok, "activate_h") == 0 || strcmp(tok, "activate") == 0) {
     active_h = true;
     digitalWrite(nSLP_h, HIGH);
-    Serial.println("horizontal motor activated");
+    Serial.println(F("horizontal motor activated"));
   }
   else if (strcmp(tok, "activate_v") == 0) {
     active_v = true;
     digitalWrite(nSLP_v, HIGH);
-    Serial.println("vertical motor activated");
+    Serial.println(F("vertical motor activated"));
   }
   else if (strcmp(tok, "deactivate_h") == 0 || strcmp(tok, "deactivate") == 0)  {
     active_h = false;
     digitalWrite(nSLP_h, LOW);
-    Serial.println("horizontal motor deactivated");
+    Serial.println(F("horizontal motor deactivated"));
   }
   else if (strcmp(tok, "deactivate_v") == 0) {
     active_v = false;
     digitalWrite(nSLP_v, LOW);
-    Serial.println("vertical motor deactivated");
+    Serial.println(F("vertical motor deactivated"));
   }
   else if (strcmp(tok, "balance_v") == 0) {
     balance_v();
@@ -479,6 +498,12 @@ void parse() {
     else if (strcmp(tok2, "spd_v") == 0) {
       Serial.println(spd_v);
     }
+    else if (strcmp(tok2, "position") == 0 || strcmp(tok2, "position_h") == 0) {
+      Serial.println(angle_h_is);
+    }
+    else if (strcmp(tok2, "position_v") == 0) {
+      Serial.println(angle_v_is);
+    }
     else if (strcmp(tok2, "trig_width") == 0 || strcmp(tok2, "trig_width_h") == 0) {
       Serial.println(trig_step_width_h);
     }
@@ -504,9 +529,9 @@ void parse() {
       Serial.println(offset_v);
     }
     else {
-      Serial.print("Unknown command: ");
+      Serial.print(F("Unknown command: "));
       Serial.println(tok2);
-      Serial.println("Command 'Help' for help");
+      Serial.println(F("Command 'Help' for help"));
       return;
     }
   }
@@ -518,7 +543,7 @@ void parse() {
     else if (strcmp(tok2, "trans") == 0 || strcmp(tok2, "trans_h") == 0) {
       char* tok3 = strtok(0, " \r");
       if (tok3 == 0) {
-        Serial.println("Error: No value");
+        Serial.println(F("Error: No value"));
         return;
       }
       char* next;
@@ -528,7 +553,7 @@ void parse() {
     else if (strcmp(tok2, "trans_v") == 0) {
       char* tok3 = strtok(0, " \r");
       if (tok3 == 0) {
-        Serial.println("Error: No value");
+        Serial.println(F("Error: No value"));
         return;
       }
       char* next;
@@ -538,7 +563,7 @@ void parse() {
     else if (strcmp(tok2, "msteps") == 0 || strcmp(tok2, "msteps_h") == 0) {
       char* tok3 = strtok(0, " \r");
       if (tok3 == 0) {
-        Serial.println("Error: No value");
+        Serial.println(F("Error: No value"));
         return;
       }
       char* next;
@@ -548,7 +573,7 @@ void parse() {
     else if (strcmp(tok2, "msteps_v") == 0) {
       char* tok3 = strtok(0, " \r");
       if (tok3 == 0) {
-        Serial.println("Error: No value");
+        Serial.println(F("Error: No value"));
         return;
       }
       char* next;
@@ -558,7 +583,7 @@ void parse() {
     else if (strcmp(tok2, "offset_h") == 0) {
       char* tok3 = strtok(0, " \r");
       if (tok3 == 0) {
-        Serial.println("Error: No value");
+        Serial.println(F("Error: No value"));
         return;
       }
       char* next;
@@ -568,7 +593,7 @@ void parse() {
     else if (strcmp(tok2, "offset_v") == 0) {
       char* tok3 = strtok(0, " \r");
       if (tok3 == 0) {
-        Serial.println("Error: No value");
+        Serial.println(F("Error: No value"));
         return;
       }
       char* next;
@@ -576,24 +601,24 @@ void parse() {
       EEPROM.update(EEPROM_ADDR_OFFSET_v, offset_v);
     }
     else {
-      Serial.print("Unknown command: ");
+      Serial.print(F("Unknown command: "));
       Serial.println(tok2);
-      Serial.println("Command 'Help' for help");
+      Serial.println(F("Command 'Help' for help"));
       return;
     }
 
-    Serial.println("OK");
+    Serial.println(F("OK"));
   }
 
   
   else if (strcmp(tok, "moveto") == 0 || strcmp(tok, "moveto_h") == 0) {
     char* tok2 = strtok(0, " \r");
     if (tok2 == 0) {
-      Serial.println("Error: No value");
+      Serial.println(F("Error: No value"));
       return;
     }
     if (!active_h) {
-      Serial.println("Error: Motor is deactivated");
+      Serial.println(F("Error: Motor is deactivated"));
       return;
     }
     char* next;
@@ -626,7 +651,11 @@ void parse() {
       Serial.println("Error: Maximum target angle is +/-45 degree");
       return;
     }
+    Serial.print(F("Target_Angle:"));
+    Serial.println(angle_v_target);
    double angle = angle_v_target - angle_v_is;
+    Serial.print(F("Angle:"));
+    Serial.println(angle);   
    dir = false;
    move(angle,dir);
    
@@ -688,9 +717,9 @@ void parse() {
   }
 
   else {
-    Serial.print("Unknown command: ");
+    Serial.print(F("Unknown command: "));
     Serial.println(tok);
-    Serial.println("Command 'Help' for help");
+    Serial.println(F("Command 'Help' for help"));
     return;
 
   }
@@ -701,18 +730,18 @@ int Step(int steps, int pin)
 {
   if (!active_h && pin == STP_h)
   {
-    Serial.println("horizontal motor still deactivated");
+    Serial.println(F("horizontal motor still deactivated"));
   }
   if (!active_v && pin == STP_v)
   {
-    Serial.println("vertical motor still deactivated");
+    Serial.println(F("vertical motor still deactivated"));
   }
 
 float  delvar = 6000;
 int x= 1;
   for (x = 1; x <= steps; x++)  {
     if (button_pushed) {
-      Serial.println("Warning: Movement stopped by button. Angles might be incorrect now! Initialize again!");
+      Serial.println(F("Warning: Movement stopped by button. Angles might be incorrect now! Initialize again!"));
       button_pushed = false;
       break;
     }
@@ -727,6 +756,6 @@ int x= 1;
       delvar -= 2 * delvar / (4 * (x - steps - 1) + 1);
     }
   }
-  if (steps == (x - 1)) Serial.println("OK");
+  if (steps == (x - 1)) Serial.println(F("OK"));
   return (x - 1);
 }
